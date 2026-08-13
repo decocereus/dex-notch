@@ -7,7 +7,11 @@ final class T3ConnectionController {
   private let client: T3Client
   private let credentials: T3CredentialStore
   private var sessionCredential = T3SessionCredential()
-  private var refreshTask: Task<Void, Never>?
+  private var connectionTask: Task<Void, Never>?
+  private var shellSnapshot: T3ShellSnapshot?
+  private var usageByThread: [String: T3ThreadSnapshot.UsagePayload] = [:]
+  private var activeOrigin: URL?
+  private var activeBearer: String?
 
   init(
     model: DexModel,
@@ -20,12 +24,26 @@ final class T3ConnectionController {
   }
 
   func start() {
-    refreshTask?.cancel()
-    refreshTask = Task { [weak self] in
+    connectionTask?.cancel()
+    connectionTask = Task { [weak self] in
       guard let self else { return }
       while !Task.isCancelled {
         await refresh()
-        try? await Task.sleep(for: .seconds(3))
+        guard let origin = activeOrigin, let bearer = activeBearer else {
+          try? await Task.sleep(for: .seconds(3))
+          continue
+        }
+
+        do {
+          try await runLiveStream(origin: origin, bearer: bearer)
+        } catch T3ClientError.unauthorized {
+          invalidateCredential()
+        } catch {
+          // A fresh HTTP snapshot on the next iteration covers connection loss
+          // and older T3 builds that do not expose bearer-authenticated streams.
+        }
+        guard !Task.isCancelled else { return }
+        try? await Task.sleep(for: .seconds(1))
       }
     }
   }
@@ -70,35 +88,148 @@ final class T3ConnectionController {
       let runtime = try client.discoverRuntime()
       _ = try await client.probe(origin: runtime.origin)
       guard let bearer = sessionCredential.value(load: credentials.load) else {
+        clearLiveState()
         model.updateConnection(.disconnected, threads: [])
         return
       }
 
       let shell = try await client.shell(origin: runtime.origin, bearer: bearer)
       let visible = Self.relevantThreads(from: shell)
-      var mapped: [DexThread] = []
+      var usage: [String: T3ThreadSnapshot.UsagePayload] = [:]
       for thread in visible {
-        let usage = try? await client.thread(
+        let snapshot = try? await client.thread(
           origin: runtime.origin,
           id: thread.id,
           bearer: bearer
         )
-        mapped.append(Self.map(thread, shell: shell, usage: usage))
+        if let context = Self.contextUsage(from: snapshot) {
+          usage[thread.id] = context
+        }
       }
-      let order = Dictionary(uniqueKeysWithValues: visible.enumerated().map { ($1.id, $0) })
-      model.updateConnection(
-        .connected,
-        threads: mapped.sorted { order[$0.id, default: .max] < order[$1.id, default: .max] }
-      )
+      shellSnapshot = shell
+      usageByThread = usage
+      activeOrigin = runtime.origin
+      activeBearer = bearer
+      updateModel()
     } catch T3ClientError.unauthorized {
-      sessionCredential.replace(with: nil)
-      credentials.remove()
-      model.updateConnection(.disconnected, threads: [])
+      invalidateCredential()
     } catch T3ClientError.notRunning {
+      clearLiveState()
       model.updateConnection(.disconnected, threads: [])
     } catch {
       model.updateConnection(.incompatible(error.localizedDescription), threads: [])
     }
+  }
+
+  private func runLiveStream(origin: URL, bearer: String) async throws {
+    let url = try await client.webSocketURL(origin: origin, bearer: bearer)
+    let streamClient = T3EventStream(url: url)
+    let updates = try await streamClient.connect(afterSequence: shellSnapshot?.snapshotSequence)
+
+    do {
+      try await updateSubscriptions(on: streamClient)
+      for try await update in updates {
+        switch update {
+        case .shell(let item):
+          apply(item)
+          try await updateSubscriptions(on: streamClient)
+        case .thread(let id, let item):
+          apply(item, to: id)
+        }
+        updateModel()
+      }
+      await streamClient.close()
+    } catch {
+      await streamClient.close()
+      throw error
+    }
+  }
+
+  private func updateSubscriptions(on client: T3EventStream) async throws {
+    guard let shellSnapshot else { return }
+    let ids = Set(Self.relevantThreads(from: shellSnapshot).map(\.id))
+    try await client.subscribe(to: ids)
+  }
+
+  private func apply(_ item: T3ShellStreamItem) {
+    if item.kind == "snapshot", let snapshot = item.snapshot {
+      shellSnapshot = snapshot
+      return
+    }
+    guard let current = shellSnapshot, let sequence = item.sequence,
+      sequence > current.snapshotSequence
+    else { return }
+
+    var projects = current.projects
+    var threads = current.threads
+    switch item.kind {
+    case "project-upserted":
+      guard let project = item.project else { return }
+      if let index = projects.firstIndex(where: { $0.id == project.id }) {
+        projects[index] = project
+      } else {
+        projects.append(project)
+      }
+    case "project-removed":
+      guard let projectId = item.projectId else { return }
+      projects.removeAll { $0.id == projectId }
+    case "thread-upserted":
+      guard let thread = item.thread else { return }
+      if let index = threads.firstIndex(where: { $0.id == thread.id }) {
+        threads[index] = thread
+      } else {
+        threads.append(thread)
+      }
+    case "thread-removed":
+      guard let threadId = item.threadId else { return }
+      threads.removeAll { $0.id == threadId }
+      usageByThread.removeValue(forKey: threadId)
+    default:
+      return
+    }
+    shellSnapshot = T3ShellSnapshot(
+      snapshotSequence: sequence,
+      projects: projects,
+      threads: threads
+    )
+  }
+
+  private func apply(_ item: T3ThreadStreamItem, to threadId: String) {
+    if let snapshot = item.snapshot, let usage = Self.contextUsage(from: snapshot) {
+      usageByThread[threadId] = usage
+      return
+    }
+    guard item.kind == "event", item.event?.type == "thread.activity-appended",
+      let activity = item.event?.payload.activity,
+      activity.kind == "context-window.updated",
+      let usage = activity.payload
+    else { return }
+    usageByThread[threadId] = usage
+  }
+
+  private func updateModel() {
+    guard let shellSnapshot else {
+      model.updateConnection(.disconnected, threads: [])
+      return
+    }
+    let mapped = Self.relevantThreads(from: shellSnapshot).map {
+      Self.map($0, shell: shellSnapshot, usage: usageByThread[$0.id])
+    }
+    model.updateConnection(.connected, threads: mapped)
+  }
+
+  private func invalidateCredential() {
+    sessionCredential.replace(with: nil)
+    credentials.remove()
+    clearLiveState()
+    model.updateConnection(.disconnected, threads: [])
+  }
+
+  private func clearLiveState() {
+    activeOrigin = nil
+    activeBearer = nil
+    shellSnapshot = nil
+    usageByThread = [:]
   }
 
   private static func relevantThreads(from shell: T3ShellSnapshot) -> [T3ShellSnapshot.Thread] {
@@ -126,7 +257,7 @@ final class T3ConnectionController {
   private static func map(
     _ thread: T3ShellSnapshot.Thread,
     shell: T3ShellSnapshot,
-    usage: T3ThreadSnapshot?
+    usage: T3ThreadSnapshot.UsagePayload?
   ) -> DexThread {
     let activity: ThreadActivity
     let detail: String
@@ -156,8 +287,6 @@ final class T3ConnectionController {
       detail = "Done"
     }
 
-    let context = usage?.thread.activities.reversed().first { $0.kind == "context-window.updated" }?
-      .payload
     let project = shell.projects.first { $0.id == thread.projectId }?.title ?? "T3 Code"
     return DexThread(
       id: thread.id,
@@ -165,9 +294,15 @@ final class T3ConnectionController {
       project: project,
       detail: detail,
       activity: activity,
-      usedTokens: context?.usedTokens ?? 0,
-      maximumTokens: context?.maxTokens
+      usedTokens: usage?.usedTokens ?? 0,
+      maximumTokens: usage?.maxTokens
     )
+  }
+
+  private static func contextUsage(
+    from snapshot: T3ThreadSnapshot?
+  ) -> T3ThreadSnapshot.UsagePayload? {
+    snapshot?.thread.activities.reversed().first { $0.kind == "context-window.updated" }?.payload
   }
 }
 

@@ -11,8 +11,28 @@ struct T3EnvironmentDescriptor: Decodable, Sendable {
 }
 
 struct T3ShellSnapshot: Decodable, Sendable {
+  let snapshotSequence: Int
   let projects: [Project]
   let threads: [Thread]
+
+  init(snapshotSequence: Int = 0, projects: [Project], threads: [Thread]) {
+    self.snapshotSequence = snapshotSequence
+    self.projects = projects
+    self.threads = threads
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case snapshotSequence
+    case projects
+    case threads
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    snapshotSequence = try container.decodeIfPresent(Int.self, forKey: .snapshotSequence) ?? 0
+    projects = try container.decode([Project].self, forKey: .projects)
+    threads = try container.decode([Thread].self, forKey: .threads)
+  }
 
   struct Project: Decodable, Sendable {
     let id: String
@@ -47,7 +67,19 @@ struct T3ShellSnapshot: Decodable, Sendable {
 }
 
 struct T3ThreadSnapshot: Decodable, Sendable {
+  let snapshotSequence: Int
   let thread: Thread
+
+  private enum CodingKeys: String, CodingKey {
+    case snapshotSequence
+    case thread
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    snapshotSequence = try container.decodeIfPresent(Int.self, forKey: .snapshotSequence) ?? 0
+    thread = try container.decode(Thread.self, forKey: .thread)
+  }
 
   struct Thread: Decodable, Sendable {
     let activities: [Activity]
@@ -80,5 +112,44 @@ struct T3TokenExchangeResponse: Decodable, Sendable {
 
   enum CodingKeys: String, CodingKey {
     case accessToken = "access_token"
+  }
+}
+
+struct T3WebSocketTicketResponse: Decodable, Sendable {
+  let ticket: String
+}
+
+struct T3ShellStreamItem: Decodable, Sendable {
+  let kind: String
+  let snapshot: T3ShellSnapshot?
+  let sequence: Int?
+  let project: T3ShellSnapshot.Project?
+  let projectId: String?
+  let thread: T3ShellSnapshot.Thread?
+  let threadId: String?
+}
+
+struct T3ThreadStreamItem: Decodable, Sendable {
+  let kind: String
+  let snapshot: T3ThreadSnapshot?
+  let event: Event?
+
+  struct Event: Decodable, Sendable {
+    let type: String
+    let sequence: Int
+    let payload: Payload
+  }
+
+  struct Payload: Decodable, Sendable {
+    let activity: T3ThreadSnapshot.Activity?
+
+    init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      activity = try? container.decode(T3ThreadSnapshot.Activity.self, forKey: .activity)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+      case activity
+    }
   }
 }

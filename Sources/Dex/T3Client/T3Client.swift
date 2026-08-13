@@ -88,6 +88,26 @@ struct T3Client: Sendable {
     try await get(origin.appending(path: "api/orchestration/threads/\(id)"), bearer: bearer)
   }
 
+  func webSocketURL(origin: URL, bearer: String) async throws -> URL {
+    var request = URLRequest(url: origin.appending(path: "api/auth/websocket-ticket"))
+    request.httpMethod = "POST"
+    request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+    let response: T3WebSocketTicketResponse = try await execute(request)
+
+    guard var components = URLComponents(url: origin, resolvingAgainstBaseURL: false) else {
+      throw T3ClientError.invalidRuntime
+    }
+    switch components.scheme?.lowercased() {
+    case "http": components.scheme = "ws"
+    case "https": components.scheme = "wss"
+    default: throw T3ClientError.invalidRuntime
+    }
+    components.path = "/ws"
+    components.queryItems = [URLQueryItem(name: "wsTicket", value: response.ticket)]
+    guard let url = components.url else { throw T3ClientError.invalidRuntime }
+    return url
+  }
+
   static func pairingCredential(from value: String) -> String? {
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let components = URLComponents(string: trimmed),

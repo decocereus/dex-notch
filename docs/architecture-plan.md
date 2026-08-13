@@ -297,28 +297,35 @@ cannot express; views must not retain or mutate the panel directly.
 ## Verified T3 read path
 
 The source audit at commit `5a84614809b6e853b872f9e57ff4b97e9df5df02`
-confirmed a simpler v0.1 path than a custom Swift Effect-RPC implementation:
+confirmed the official bearer-authenticated snapshot and streaming path:
 
 ```text
 server-runtime.json                 endpoint discovery only
 /.well-known/t3/environment        capability and auth probe
 /oauth/token                       explicit one-time pairing exchange
-/api/orchestration/shell           thread activity snapshot
-/api/orchestration/threads/:id     context-window activity snapshot
+/api/orchestration/shell           reconnect activity snapshot
+/api/orchestration/threads/:id     reconnect context snapshot
+/api/auth/websocket-ticket         short-lived stream credential
+/ws
+  orchestration.subscribeShell     incremental activity state
+  orchestration.subscribeThread    visible-thread context activity
 ```
 
 Both snapshot endpoints require `orchestration:read`. The shell contains
 session status, latest-turn state, approval/input flags, background liveness,
 and plan progress. Per-thread detail contains durable `context-window.updated`
 activities with `usedTokens` and optional `maxTokens`. Missing `maxTokens` must
-render as unavailable rather than zero percent. WebSocket subscriptions remain
-the later low-latency enhancement; authenticated HTTP snapshots are sufficient
-for a truthful first connected build and are easier to keep compatible with
-official stable and nightly releases.
+render as unavailable rather than zero percent. Dex bootstraps and recovers with
+HTTP snapshots, then consumes T3's JSON Effect RPC stream, acknowledges every
+chunk, sends the protocol heartbeat, and resumes shell delivery from the last
+snapshot sequence. If the socket is unavailable, the next bounded HTTP refresh
+keeps older compatible builds functional while Dex retries the official stream.
 
 Dex must never consume T3's private desktop bootstrap credential. The user
 explicitly supplies a one-time pairing credential, Dex requests only
 `orchestration:read`, and the resulting bearer session is stored in Keychain.
+Dex reads that item once per app launch and keeps it in process memory; API
+refreshes must not repeatedly invoke Keychain access.
 
 ## Build workflow
 
@@ -383,14 +390,14 @@ and display changes, and looks physically attached to the camera housing.
 
 ### Phase 1 — read-only T3 integration
 
-- [ ] Detect the T3 app and installed version through Launch Services.
-- [ ] Discover the current local server without exposing secrets.
-- [ ] Implement read-only pairing and Keychain persistence.
-- [ ] Decode the shell snapshot and incremental stream.
+- [x] Detect the T3 app and installed version through Launch Services.
+- [x] Discover the current local server without exposing secrets.
+- [x] Implement read-only pairing and Keychain persistence.
+- [x] Decode the shell snapshot and incremental stream.
 - [ ] Add official stable and nightly compatibility fixtures and capability probes.
-- [ ] Map T3 shell state into the compact and expanded UI.
+- [x] Map T3 shell state into the compact and expanded UI.
 - [ ] Deep-link each row back into T3 Code.
-- [ ] Implement offline, incompatible, and T3-not-installed states.
+- [x] Implement offline, incompatible, and T3-not-installed states.
 
 Exit proof: fixture tests cover every status and a real local T3 session moves a
 thread through starting, working, attention, completion, and reconnect without a
@@ -398,10 +405,10 @@ stale or lying state.
 
 ### Phase 2 — context usage
 
-- [ ] Subscribe to detail only for active or visible threads.
-- [ ] Extract the latest durable context-window snapshot.
-- [ ] Show used/max percentage when max is known and exact token counts otherwise.
-- [ ] Bound subscriptions and memory as thread counts grow.
+- [x] Subscribe to detail only for active or visible threads.
+- [x] Extract the latest durable context-window snapshot.
+- [x] Show used/max percentage when max is known and exact token counts otherwise.
+- [x] Bound subscriptions and memory as thread counts grow.
 
 Exit proof: displayed values match the corresponding T3 thread UI across Codex
 and Claude sessions, including unknown maximums and compaction.
