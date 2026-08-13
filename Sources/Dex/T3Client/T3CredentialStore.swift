@@ -1,6 +1,30 @@
 import Foundation
 import Security
 
+struct T3SessionCredential {
+  private enum State {
+    case unloaded
+    case loaded(String?)
+  }
+
+  private var state: State = .unloaded
+
+  mutating func value(load: () -> String?) -> String? {
+    switch state {
+    case .unloaded:
+      let credential = load()
+      state = .loaded(credential)
+      return credential
+    case .loaded(let credential):
+      return credential
+    }
+  }
+
+  mutating func replace(with credential: String?) {
+    state = .loaded(credential)
+  }
+}
+
 struct T3CredentialStore: Sendable {
   private let service = "codes.t3.dex"
   private let account = "t3-read-session"

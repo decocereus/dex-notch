@@ -6,6 +6,7 @@ final class T3ConnectionController {
   private let model: DexModel
   private let client: T3Client
   private let credentials: T3CredentialStore
+  private var sessionCredential = T3SessionCredential()
   private var refreshTask: Task<Void, Never>?
 
   init(
@@ -52,6 +53,7 @@ final class T3ConnectionController {
         _ = try await client.probe(origin: runtime.origin)
         let bearer = try await client.exchange(pairingLink: pairingLink, origin: runtime.origin)
         try credentials.save(bearer)
+        sessionCredential.replace(with: bearer)
         await refresh(preservingConnectionFeedback: false)
       } catch {
         model.updateConnection(.incompatible(error.localizedDescription), threads: [])
@@ -67,7 +69,7 @@ final class T3ConnectionController {
     do {
       let runtime = try client.discoverRuntime()
       _ = try await client.probe(origin: runtime.origin)
-      guard let bearer = credentials.load() else {
+      guard let bearer = sessionCredential.value(load: credentials.load) else {
         model.updateConnection(.disconnected, threads: [])
         return
       }
@@ -89,6 +91,7 @@ final class T3ConnectionController {
         threads: mapped.sorted { order[$0.id, default: .max] < order[$1.id, default: .max] }
       )
     } catch T3ClientError.unauthorized {
+      sessionCredential.replace(with: nil)
       credentials.remove()
       model.updateConnection(.disconnected, threads: [])
     } catch T3ClientError.notRunning {

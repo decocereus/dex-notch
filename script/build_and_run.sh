@@ -23,6 +23,24 @@ cp "$BUILD_DIR/$APP_NAME" "$APP_BINARY"
 cp "$ROOT_DIR/Support/Info.plist" "$APP_CONTENTS/Info.plist"
 chmod +x "$APP_BINARY"
 
+SIGNING_IDENTITY="${DEX_CODESIGN_IDENTITY:-}"
+if [[ -n "$SIGNING_IDENTITY" ]]; then
+    if ! /usr/bin/codesign \
+        --force \
+        --sign "$SIGNING_IDENTITY" \
+        --identifier "$BUNDLE_ID" \
+        --timestamp=none \
+        "$APP_BUNDLE"; then
+        echo "Development signing was unavailable; using ad-hoc signing." >&2
+        echo "Set DEX_CODESIGN_IDENTITY after granting codesign access to avoid repeated Keychain prompts." >&2
+        /usr/bin/codesign --force --sign - --identifier "$BUNDLE_ID" "$APP_BUNDLE"
+    fi
+else
+    echo "Using ad-hoc signing for this development build." >&2
+    echo "Set DEX_CODESIGN_IDENTITY to keep Keychain access stable across rebuilds." >&2
+    /usr/bin/codesign --force --sign - --identifier "$BUNDLE_ID" "$APP_BUNDLE"
+fi
+
 open_app() {
     /usr/bin/open -n "$APP_BUNDLE"
 }
