@@ -74,9 +74,12 @@ final class NotchPanelController: NSObject {
       .removeDuplicates()
       .dropFirst()
       .sink { [weak self] isExpanded in
-        self?.updatePanelFrame(animated: true)
-        if isExpanded {
-          self?.panel.orderFrontRegardless()
+        Task { @MainActor [weak self] in
+          guard let self else { return }
+          self.updatePanelFrame(isExpanded: isExpanded, animated: true)
+          if isExpanded {
+            self.panel.orderFrontRegardless()
+          }
         }
       }
   }
@@ -131,12 +134,12 @@ final class NotchPanelController: NSObject {
 
     self.geometry = geometry
     model.updateGeometry(geometry)
-    updatePanelFrame(animated: animated)
+    updatePanelFrame(isExpanded: model.isExpanded, animated: animated)
   }
 
-  private func updatePanelFrame(animated: Bool) {
+  private func updatePanelFrame(isExpanded: Bool, animated: Bool) {
     guard let geometry else { return }
-    let frame = model.isExpanded ? geometry.expandedFrame : geometry.compactFrame
+    let frame = isExpanded ? geometry.expandedFrame : geometry.compactFrame
     guard animated else {
       panel.setFrame(frame, display: true)
       return
