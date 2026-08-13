@@ -55,6 +55,7 @@ final class NotchPanelController: NSObject {
     let rootView = DexRootView(
       model: model,
       onQuit: { NSApp.terminate(nil) },
+      onOpenT3ForPairing: { T3ApplicationLauncher.openForPairing() },
       onConnect: { [weak self] in self?.connectFromPasteboard() }
     )
     let hostingView = NSHostingView(rootView: rootView)

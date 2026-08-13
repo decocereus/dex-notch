@@ -3,6 +3,7 @@ import SwiftUI
 struct ExpandedThreadsView: View {
   @ObservedObject var model: DexModel
   let onQuit: () -> Void
+  let onOpenT3ForPairing: () -> Void
   let onConnect: () -> Void
 
   var body: some View {
@@ -71,14 +72,14 @@ struct ExpandedThreadsView: View {
           icon: "exclamationmark.triangle",
           title: "Couldn’t connect",
           detail: message,
-          buttonTitle: "Try copied link again"
+          showsPairingActions: true
         )
       case .disconnected:
         connectionState(
           icon: "bolt.horizontal.circle",
           title: "T3 Code isn’t connected",
-          detail: "In T3 Code, create a pairing link in Settings → Connections, then copy it.",
-          buttonTitle: "Connect copied pairing link"
+          detail: "T3 Code → Settings → Connections → Create pairing link",
+          showsPairingActions: true
         )
       case .connected:
         connectionState(
@@ -94,7 +95,7 @@ struct ExpandedThreadsView: View {
     icon: String,
     title: String,
     detail: String,
-    buttonTitle: String? = nil,
+    showsPairingActions: Bool = false,
     showsProgress: Bool = false
   ) -> some View {
     VStack(spacing: 8) {
@@ -116,13 +117,23 @@ struct ExpandedThreadsView: View {
         .multilineTextAlignment(.center)
         .lineLimit(2)
 
-      if let buttonTitle {
-        Button(buttonTitle, action: onConnect)
+      if showsPairingActions {
+        Button(action: onOpenT3ForPairing) {
+          Label("Get pairing link in T3 Code", systemImage: "arrow.up.forward.app")
+        }
           .buttonStyle(.borderedProminent)
+          .controlSize(.small)
+          .accessibilityHint("Opens T3 Code so you can get a pairing link from Connections")
+
+        Button("Paste link when ready", action: onConnect)
+          .buttonStyle(.plain)
+          .font(.system(size: 10, weight: .semibold, design: .rounded))
+          .foregroundStyle(.white.opacity(0.68))
+          .accessibilityHint("Reads a T3 pairing link from the clipboard")
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .padding(.bottom, 24)
+    .padding(.bottom, 14)
   }
 }
 

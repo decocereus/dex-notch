@@ -3,6 +3,7 @@ import SwiftUI
 struct DexRootView: View {
   @ObservedObject var model: DexModel
   let onQuit: () -> Void
+  let onOpenT3ForPairing: () -> Void
   let onConnect: () -> Void
 
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -11,7 +12,12 @@ struct DexRootView: View {
   var body: some View {
     let surface = ZStack(alignment: .top) {
       if model.isExpanded {
-        ExpandedThreadsView(model: model, onQuit: onQuit, onConnect: onConnect)
+        ExpandedThreadsView(
+          model: model,
+          onQuit: onQuit,
+          onOpenT3ForPairing: onOpenT3ForPairing,
+          onConnect: onConnect
+        )
           .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
       } else {
         CompactNotchView(model: model)
