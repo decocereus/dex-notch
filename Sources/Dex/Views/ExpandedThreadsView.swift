@@ -7,10 +7,10 @@ struct ExpandedThreadsView: View {
 
   var body: some View {
     content
-    .onHover(perform: model.updateHover)
-    .contextMenu {
-      Button("Quit Dex", action: onQuit)
-    }
+      .onHover(perform: model.updateHover)
+      .contextMenu {
+        Button("Quit Dex", action: onQuit)
+      }
   }
 
   private var content: some View {
@@ -20,7 +20,8 @@ struct ExpandedThreadsView: View {
         PrimaryThreadRow(thread: primary)
 
         VStack(spacing: 0) {
-          ForEach(Array(model.threads.dropFirst().filter(\.activity.isActive).prefix(2))) { thread in
+          ForEach(Array(model.threads.dropFirst().filter(\.activity.isActive).prefix(2))) {
+            thread in
             SecondaryThreadRow(thread: thread)
           }
         }
@@ -29,7 +30,9 @@ struct ExpandedThreadsView: View {
         disconnectedState
       }
     }
-    .frame(width: NotchGeometry.expandedWidth, height: NotchGeometry.expandedHeight, alignment: .top)
+    .frame(
+      width: NotchGeometry.expandedWidth, height: NotchGeometry.expandedHeight, alignment: .top
+    )
     .foregroundStyle(.white)
   }
 
@@ -54,21 +57,69 @@ struct ExpandedThreadsView: View {
   }
 
   private var disconnectedState: some View {
-    VStack(spacing: 8) {
-      Image(systemName: "bolt.horizontal.circle")
-        .font(.system(size: 21, weight: .medium))
-        .foregroundStyle(.white.opacity(0.45))
+    Group {
+      switch model.connectionState {
+      case .connecting:
+        connectionState(
+          icon: "arrow.triangle.2.circlepath",
+          title: "Connecting to T3 Code…",
+          detail: "Exchanging a read-only pairing credential.",
+          showsProgress: true
+        )
+      case .incompatible(let message):
+        connectionState(
+          icon: "exclamationmark.triangle",
+          title: "Couldn’t connect",
+          detail: message,
+          buttonTitle: "Try copied link again"
+        )
+      case .disconnected:
+        connectionState(
+          icon: "bolt.horizontal.circle",
+          title: "T3 Code isn’t connected",
+          detail: "In T3 Code, create a pairing link in Settings → Connections, then copy it.",
+          buttonTitle: "Connect copied pairing link"
+        )
+      case .connected:
+        connectionState(
+          icon: "checkmark.circle",
+          title: "Connected",
+          detail: "No threads are available yet."
+        )
+      }
+    }
+  }
 
-      Text("T3 Code isn’t connected")
+  private func connectionState(
+    icon: String,
+    title: String,
+    detail: String,
+    buttonTitle: String? = nil,
+    showsProgress: Bool = false
+  ) -> some View {
+    VStack(spacing: 8) {
+      if showsProgress {
+        ProgressView()
+          .controlSize(.small)
+      } else {
+        Image(systemName: icon)
+          .font(.system(size: 21, weight: .medium))
+          .foregroundStyle(.white.opacity(0.45))
+      }
+
+      Text(title)
         .font(.system(size: 12, weight: .semibold, design: .rounded))
 
-      Text("Dex will only show activity after a read-only pairing.")
+      Text(detail)
         .font(.system(size: 10, design: .rounded))
         .foregroundStyle(.white.opacity(0.45))
         .multilineTextAlignment(.center)
+        .lineLimit(2)
 
-      Button("Connect copied pairing link", action: onConnect)
-        .buttonStyle(.borderedProminent)
+      if let buttonTitle {
+        Button(buttonTitle, action: onConnect)
+          .buttonStyle(.borderedProminent)
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding(.bottom, 24)

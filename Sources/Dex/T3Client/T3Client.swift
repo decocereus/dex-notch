@@ -69,7 +69,8 @@ struct T3Client: Sendable {
       "client_device_type": "desktop",
       "client_os": "macOS",
     ]
-    request.httpBody = fields
+    request.httpBody =
+      fields
       .map { key, value in "\(Self.formEncode(key))=\(Self.formEncode(value))" }
       .sorted()
       .joined(separator: "&")
@@ -89,15 +90,24 @@ struct T3Client: Sendable {
 
   static func pairingCredential(from value: String) -> String? {
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard let components = URLComponents(string: trimmed) else { return nil }
-    if let token = components.fragment?
-      .split(separator: "&")
-      .first(where: { $0.hasPrefix("token=") })?
-      .dropFirst("token=".count), !token.isEmpty
+    guard let components = URLComponents(string: trimmed),
+      let scheme = components.scheme?.lowercased(),
+      scheme == "http" || scheme == "https",
+      components.host != nil
+    else { return nil }
+
+    if let token = components.queryItems?.first(where: { $0.name == "token" })?.value,
+      !token.isEmpty
     {
-      return String(token).removingPercentEncoding ?? String(token)
+      return token
     }
-    return nil
+
+    guard let fragment = components.fragment,
+      let fragmentComponents = URLComponents(string: "?\(fragment)"),
+      let token = fragmentComponents.queryItems?.first(where: { $0.name == "token" })?.value,
+      !token.isEmpty
+    else { return nil }
+    return token
   }
 
   private func get<Value: Decodable>(_ url: URL, bearer: String?) async throws -> Value {

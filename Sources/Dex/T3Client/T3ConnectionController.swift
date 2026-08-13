@@ -30,8 +30,18 @@ final class T3ConnectionController {
   }
 
   func connectFromPasteboard() {
-    guard let pairingLink = NSPasteboard.general.string(forType: .string) else {
-      model.updateConnection(.incompatible(T3ClientError.pairingLinkMissing.localizedDescription), threads: [])
+    connect(pairingLink: NSPasteboard.general.string(forType: .string))
+  }
+
+  func connect(pairingLink: String?) {
+    guard let pairingLink else {
+      model.updateConnection(
+        .incompatible(T3ClientError.pairingLinkMissing.localizedDescription), threads: [])
+      return
+    }
+    guard T3Client.pairingCredential(from: pairingLink) != nil else {
+      model.updateConnection(
+        .incompatible(T3ClientError.invalidPairingLink.localizedDescription), threads: [])
       return
     }
 
@@ -42,14 +52,18 @@ final class T3ConnectionController {
         _ = try await client.probe(origin: runtime.origin)
         let bearer = try await client.exchange(pairingLink: pairingLink, origin: runtime.origin)
         try credentials.save(bearer)
-        await refresh()
+        await refresh(preservingConnectionFeedback: false)
       } catch {
         model.updateConnection(.incompatible(error.localizedDescription), threads: [])
       }
     }
   }
 
-  private func refresh() async {
+  func refresh(preservingConnectionFeedback: Bool = true) async {
+    if preservingConnectionFeedback, model.connectionState.isConnectionFeedback {
+      return
+    }
+
     do {
       let runtime = try client.discoverRuntime()
       _ = try await client.probe(origin: runtime.origin)
@@ -139,7 +153,8 @@ final class T3ConnectionController {
       detail = "Done"
     }
 
-    let context = usage?.thread.activities.reversed().first { $0.kind == "context-window.updated" }?.payload
+    let context = usage?.thread.activities.reversed().first { $0.kind == "context-window.updated" }?
+      .payload
     let project = shell.projects.first { $0.id == thread.projectId }?.title ?? "T3 Code"
     return DexThread(
       id: thread.id,
@@ -150,5 +165,16 @@ final class T3ConnectionController {
       usedTokens: context?.usedTokens ?? 0,
       maximumTokens: context?.maxTokens
     )
+  }
+}
+
+extension DexModel.ConnectionState {
+  fileprivate var isConnectionFeedback: Bool {
+    switch self {
+    case .connecting, .incompatible:
+      true
+    case .disconnected, .connected:
+      false
+    }
   }
 }
