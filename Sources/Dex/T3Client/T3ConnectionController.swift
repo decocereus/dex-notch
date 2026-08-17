@@ -232,8 +232,9 @@ final class T3ConnectionController {
     usageByThread = [:]
   }
 
-  private static func relevantThreads(from shell: T3ShellSnapshot) -> [T3ShellSnapshot.Thread] {
+  static func relevantThreads(from shell: T3ShellSnapshot) -> [T3ShellSnapshot.Thread] {
     shell.threads
+      .filter(isUnresolvedWork)
       .sorted {
         let lhs = activityPriority($0)
         let rhs = activityPriority($1)
@@ -246,15 +247,35 @@ final class T3ConnectionController {
   private static func activityPriority(_ thread: T3ShellSnapshot.Thread) -> Int {
     if thread.hasPendingApprovals == true { return 0 }
     if thread.hasPendingUserInput == true { return 1 }
-    if thread.session?.status == "running" || thread.session?.status == "starting" { return 2 }
-    if thread.hasActionableProposedPlan == true { return 3 }
+    if thread.hasActionableProposedPlan == true { return 2 }
+    if thread.latestTurn?.state == "error" { return 3 }
+    if thread.session?.status == "running" || thread.session?.status == "starting" { return 4 }
     if thread.backgroundLiveness == "working" { return 4 }
     if thread.backgroundLiveness == "monitoring" { return 5 }
-    if thread.latestTurn?.state == "error" { return 6 }
-    return 7
+    return 6
   }
 
-  private static func map(
+  private static func isUnresolvedWork(_ thread: T3ShellSnapshot.Thread) -> Bool {
+    guard thread.archivedAt == nil else { return false }
+
+    // T3's settled resolver treats human blockers and a live session as
+    // authoritative activity, even across an explicit settle boundary.
+    if thread.hasPendingApprovals == true || thread.hasPendingUserInput == true {
+      return true
+    }
+    if thread.session?.status == "running" || thread.session?.status == "starting" {
+      return true
+    }
+    guard thread.settledOverride != "settled" else { return false }
+
+    return thread.hasActionableProposedPlan == true
+      || thread.backgroundLiveness == "working"
+      || thread.backgroundLiveness == "monitoring"
+      || thread.latestTurn?.state == "error"
+      || thread.settledOverride == "active"
+  }
+
+  static func map(
     _ thread: T3ShellSnapshot.Thread,
     shell: T3ShellSnapshot,
     usage: T3ThreadSnapshot.UsagePayload?
@@ -267,31 +288,40 @@ final class T3ConnectionController {
     } else if thread.hasPendingUserInput == true {
       activity = .needsInput
       detail = "Waiting for input"
-    } else if thread.session?.status == "running" || thread.session?.status == "starting" {
-      activity = .working
-      detail = thread.planProgress?.step ?? "Working"
     } else if thread.hasActionableProposedPlan == true {
       activity = .needsInput
       detail = "Plan ready"
+    } else if thread.latestTurn?.state == "error" {
+      activity = .failed
+      detail = "Failed"
+    } else if thread.session?.status == "running" || thread.session?.status == "starting" {
+      activity = .working
+      detail = thread.planProgress?.step ?? "Working"
     } else if thread.backgroundLiveness == "working" {
       activity = .working
       detail = thread.planProgress?.step ?? "Background work"
     } else if thread.backgroundLiveness == "monitoring" {
       activity = .monitoring
       detail = "Monitoring"
-    } else if thread.latestTurn?.state == "error" {
-      activity = .failed
-      detail = "Failed"
     } else {
-      activity = .completed
-      detail = "Done"
+      activity = .monitoring
+      detail = "Kept active"
     }
 
-    let project = shell.projects.first { $0.id == thread.projectId }?.title ?? "T3 Code"
+    let projectSnapshot = shell.projects.first { $0.id == thread.projectId }
+    let project = projectSnapshot?.title ?? "T3 Code"
+    let identity = projectSnapshot?.repositoryIdentity
+    let repository = identity?.displayName
+      ?? [identity?.owner, identity?.name].compactMap { $0 }.joined(separator: "/").nonEmpty
+      ?? identity?.name
+      ?? project
     return DexThread(
       id: thread.id,
       title: thread.title,
       project: project,
+      repository: repository,
+      branch: thread.branch,
+      worktreePath: thread.worktreePath ?? projectSnapshot?.workspaceRoot,
       detail: detail,
       activity: activity,
       usedTokens: usage?.usedTokens ?? 0,
@@ -304,6 +334,10 @@ final class T3ConnectionController {
   ) -> T3ThreadSnapshot.UsagePayload? {
     snapshot?.thread.activities.reversed().first { $0.kind == "context-window.updated" }?.payload
   }
+}
+
+private extension String {
+  var nonEmpty: String? { isEmpty ? nil : self }
 }
 
 extension DexModel.ConnectionState {

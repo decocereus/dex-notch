@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 struct ExpandedThreadsView: View {
@@ -16,45 +17,44 @@ struct ExpandedThreadsView: View {
 
   private var content: some View {
     VStack(spacing: 0) {
-      summary
-      if model.connectionState == .connected, let primary = model.threads.first {
-        PrimaryThreadRow(thread: primary)
+      if model.connectionState == .connected {
+        WeeklyPaceStrip(usage: model.codexUsage)
 
-        VStack(spacing: 0) {
-          ForEach(Array(model.threads.dropFirst().filter(\.activity.isActive).prefix(2))) {
-            thread in
-            SecondaryThreadRow(thread: thread)
+        if model.displayedThreads.isEmpty {
+          emptyWorkState
+        } else {
+          ForEach(model.displayedThreads.prefix(4)) { thread in
+            LiveThreadRow(thread: thread)
           }
         }
-        .padding(.horizontal, 13)
       } else {
         disconnectedState
       }
     }
     .frame(
-      width: NotchGeometry.expandedWidth, height: NotchGeometry.expandedHeight, alignment: .top
+      width: NotchGeometry.expandedWidth,
+      height: model.expandedPanelHeight - model.compactHeight,
+      alignment: .top
     )
+    .padding(.top, model.compactHeight)
     .foregroundStyle(.white)
   }
 
-  private var summary: some View {
-    HStack(spacing: 7) {
-      Text("Dex")
-        .foregroundStyle(.white.opacity(0.9))
+  private var emptyWorkState: some View {
+    VStack(spacing: 5) {
+      Image(systemName: "circle.dotted")
+        .font(.system(size: 18, weight: .medium))
+        .foregroundStyle(.white.opacity(0.28))
 
-      if model.connectionState == .connected {
-        Text("·")
-          .foregroundStyle(.white.opacity(0.24))
-        Text("\(model.activeCount) active")
-      }
+      Text("No work in progress")
+        .font(.system(size: 11, weight: .semibold, design: .rounded))
 
-      Spacer()
+      Text("Dex stays quiet until a thread needs tracking.")
+        .font(.system(size: 9, design: .rounded))
+        .foregroundStyle(.white.opacity(0.38))
     }
-    .font(.system(size: 10, weight: .semibold, design: .rounded))
-    .foregroundStyle(.white.opacity(0.62))
-    .padding(.horizontal, 15)
-    .padding(.top, 48)
-    .padding(.bottom, 12)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .padding(.bottom, 24)
   }
 
   private var disconnectedState: some View {
@@ -85,7 +85,7 @@ struct ExpandedThreadsView: View {
         connectionState(
           icon: "checkmark.circle",
           title: "Connected",
-          detail: "No threads are available yet."
+          detail: "No work is currently in progress."
         )
       }
     }
@@ -121,9 +121,9 @@ struct ExpandedThreadsView: View {
         Button(action: onOpenT3ForPairing) {
           Label("Get pairing link in T3 Code", systemImage: "arrow.up.forward.app")
         }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.small)
-          .accessibilityHint("Opens T3 Code so you can get a pairing link from Connections")
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+        .accessibilityHint("Opens T3 Code so you can get a pairing link from Connections")
 
         Button("Paste link when ready", action: onConnect)
           .buttonStyle(.plain)
@@ -137,79 +137,105 @@ struct ExpandedThreadsView: View {
   }
 }
 
-private struct PrimaryThreadRow: View {
-  let thread: DexThread
+private struct WeeklyPaceStrip: View {
+  let usage: CodexUsageSnapshot?
 
   var body: some View {
-    HStack(spacing: 10) {
-      ActivityGlyph(activity: thread.activity, size: 28)
-
-      VStack(alignment: .leading, spacing: 4) {
-        Text(thread.title)
-          .font(.system(size: 12, weight: .semibold, design: .rounded))
-          .lineLimit(1)
-
-        Text(thread.detail)
-          .font(.system(size: 10, weight: .regular, design: .rounded))
-          .foregroundStyle(.white.opacity(0.44))
-          .lineLimit(1)
-
-        GeometryReader { proxy in
-          ZStack(alignment: .leading) {
-            Capsule().fill(.white.opacity(0.08))
-            if let usageFraction = thread.usageFraction {
-              Capsule()
-                .fill(thread.activity.tint)
-                .frame(width: proxy.size.width * usageFraction)
-            }
-          }
-        }
-        .frame(height: 2)
-      }
-
-      Text(thread.usagePercentage.map { "\($0)%" } ?? "—")
-        .font(.system(size: 10, weight: .semibold, design: .rounded))
-        .monospacedDigit()
-        .foregroundStyle(.white.opacity(0.52))
-        .frame(width: 28, alignment: .trailing)
-    }
-    .padding(.horizontal, 12)
-    .frame(height: 62)
-    .background(.white.opacity(0.045))
-    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    .padding(.horizontal, 10)
-  }
-}
-
-private struct SecondaryThreadRow: View {
-  let thread: DexThread
-
-  var body: some View {
-    HStack(spacing: 9) {
-      ActivityGlyph(activity: thread.activity, size: 22)
-
-      Text(thread.title)
-        .font(.system(size: 10, weight: .medium, design: .rounded))
-        .lineLimit(1)
+    HStack(spacing: 8) {
+      Text(paceLabel)
+        .foregroundStyle(paceColor)
 
       Spacer(minLength: 8)
 
-      Text(thread.activity.label)
-        .font(.system(size: 9, weight: .medium, design: .rounded))
-        .foregroundStyle(thread.activity.tint.opacity(0.72))
-
-      Text(thread.usagePercentage.map { "\($0)%" } ?? "—")
-        .font(.system(size: 9, weight: .semibold, design: .rounded))
-        .monospacedDigit()
-        .foregroundStyle(.white.opacity(0.34))
-        .frame(width: 25, alignment: .trailing)
+      Text(forecastLabel)
+        .foregroundStyle(.white.opacity(0.38))
     }
+    .font(.system(size: 9, weight: .medium, design: .rounded))
+    .monospacedDigit()
+    .padding(.horizontal, 13)
+    .frame(height: 34)
+    .overlay(alignment: .bottom) {
+      Rectangle()
+        .fill(.white.opacity(0.06))
+        .frame(height: 1)
+        .padding(.horizontal, 12)
+    }
+    .accessibilityElement(children: .combine)
+  }
+
+  private var paceLabel: String {
+    guard let usage else { return "Weekly usage unavailable" }
+    return usage.pace?.comparisonLabel ?? "Weekly pace unavailable"
+  }
+
+  private var paceColor: Color {
+    guard let delta = usage?.pace?.deltaPercentage else { return .white.opacity(0.34) }
+    if delta > CodexUsagePace.onPaceTolerance { return .orange.opacity(0.82) }
+    if delta < -CodexUsagePace.onPaceTolerance { return .cyan.opacity(0.72) }
+    return .white.opacity(0.58)
+  }
+
+  private var forecastLabel: String {
+    guard let usage else { return "" }
+    if let exhaustionAt = usage.pace?.projectedExhaustionAt {
+      return "Runs out \(relative(exhaustionAt))"
+    }
+    if let resetsAt = usage.resetsAt {
+      return "Resets \(relative(resetsAt))"
+    }
+    return "Reset unavailable"
+  }
+
+  private func relative(_ date: Date) -> String {
+    let formatter = RelativeDateTimeFormatter()
+    formatter.dateTimeStyle = .named
+    formatter.unitsStyle = .short
+    return formatter.localizedString(for: date, relativeTo: Date())
+  }
+}
+
+private struct LiveThreadRow: View {
+  let thread: DexThread
+
+  var body: some View {
+    HStack(spacing: 8) {
+      ActivityGlyph(activity: thread.activity, size: 22)
+
+      VStack(alignment: .leading, spacing: 1) {
+        HStack(spacing: 6) {
+          Text(thread.title)
+            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .lineLimit(1)
+
+          Spacer(minLength: 5)
+
+          Text(thread.activity.label)
+            .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+            .foregroundStyle(thread.activity.tint.opacity(0.78))
+        }
+
+        HStack(spacing: 5) {
+          Text(thread.checkoutLabel)
+            .lineLimit(1)
+
+          if let usage = thread.usagePercentage, usage >= 70 {
+            Text("\(usage)% ctx")
+              .foregroundStyle(usage >= 85 ? .orange.opacity(0.8) : .white.opacity(0.42))
+          }
+        }
+        .font(.system(size: 8.5, weight: .medium, design: .rounded))
+        .foregroundStyle(.white.opacity(0.34))
+      }
+    }
+    .padding(.horizontal, 12)
     .frame(height: 36)
     .overlay(alignment: .bottom) {
       Rectangle()
         .fill(.white.opacity(0.055))
         .frame(height: 1)
+        .padding(.horizontal, 12)
     }
+    .help(thread.detail)
   }
 }
 

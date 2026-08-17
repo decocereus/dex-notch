@@ -21,6 +21,11 @@ struct NotchGeometryTests {
     #expect(geometry.expandedFrame.maxY == screen.maxY)
     #expect(geometry.expandedFrame.midX == screen.midX)
     #expect(geometry.expandedFrame.height == NotchGeometry.expandedHeight)
+
+    let compactExpansion = geometry.expandedFrame(height: 152)
+    #expect(compactExpansion.height == 152)
+    #expect(compactExpansion.maxY == screen.maxY)
+    #expect(compactExpansion.midX == screen.midX)
   }
 
   @Test

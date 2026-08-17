@@ -50,4 +50,25 @@ struct DexThreadTests {
     #expect(thread.usageFraction == nil)
     #expect(thread.usagePercentage == nil)
   }
+
+  @Test
+  func checkoutLabelUsesRepositoryBranchAndShortWorktree() {
+    let thread = DexThread(
+      id: UUID().uuidString,
+      title: "Test",
+      project: "Nightshade",
+      repository: "avail/nightshade",
+      branch: "agent/usage-pace",
+      worktreePath: "/Users/example/worktrees/dex-notch",
+      detail: "Working",
+      activity: .working,
+      usedTokens: 0,
+      maximumTokens: nil
+    )
+
+    #expect(
+      thread.checkoutLabel
+        == "avail/nightshade  ·  agent/usage-pace  ·  worktrees/dex-notch"
+    )
+  }
 }
