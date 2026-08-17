@@ -8,13 +8,13 @@ struct CompactNotchView: View {
       HStack(spacing: 5) {
         ActivityPulse()
 
-        Text(model.connectionState == .connected ? "\(model.activeCount)" : "—")
+        Text(activeLabel)
           .font(.system(size: 10, weight: .bold, design: .rounded))
           .monospacedDigit()
           .foregroundStyle(.white.opacity(0.82))
       }
       .padding(.leading, 8)
-      .frame(width: NotchGeometry.wingWidth, alignment: .leading)
+      .frame(maxWidth: .infinity, alignment: .leading)
       .contentShape(Rectangle())
       .onHover(perform: model.updateHover)
       .onTapGesture(perform: model.expand)
@@ -23,25 +23,51 @@ struct CompactNotchView: View {
         .frame(width: model.notchWidth)
 
       HStack(spacing: 4) {
-        UsageRing(progress: Double(model.primaryUsagePercentage ?? 0) / 100, size: 13)
-
-        Text(model.primaryUsagePercentage.map(String.init) ?? "—")
-          .font(.system(size: 10, weight: .bold, design: .rounded))
+        Text(weeklyUsageLabel)
+          .font(.system(size: model.isExpanded ? 9 : 10, weight: .bold, design: .rounded))
           .monospacedDigit()
           .foregroundStyle(.white.opacity(0.82))
       }
       .padding(.trailing, 8)
-      .frame(width: NotchGeometry.wingWidth, alignment: .trailing)
+      .frame(maxWidth: .infinity, alignment: .trailing)
       .contentShape(Rectangle())
       .onHover(perform: model.updateHover)
       .onTapGesture(perform: model.expand)
+      .help(weeklyUsageHelp)
     }
-    .frame(width: model.compactWidth, height: model.compactHeight)
+    .frame(maxWidth: .infinity, minHeight: model.compactHeight, maxHeight: model.compactHeight)
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(
-      "Dex, \(model.activeCount) active threads"
-    )
+    .accessibilityLabel(accessibilityLabel)
     .accessibilityHint("Click to show thread activity")
+  }
+
+  private var activeLabel: String {
+    guard model.connectionState == .connected else { return "—" }
+    return model.isExpanded ? "\(model.activeCount) working" : "\(model.activeCount) live"
+  }
+
+  private var weeklyUsageLabel: String {
+    guard let usage = model.codexUsage else { return "—" }
+    return model.isExpanded
+      ? "Weekly \(usage.remainingPercentage)% left"
+      : "Wk \(usage.remainingPercentage)%"
+  }
+
+  private var weeklyUsageHelp: String {
+    guard let usage = model.codexUsage else {
+      return "Codex weekly allowance unavailable"
+    }
+    guard let resetsAt = usage.resetsAt else {
+      return "\(usage.remainingPercentage)% of the Codex weekly allowance remaining"
+    }
+    return "\(usage.remainingPercentage)% of the Codex weekly allowance remaining; resets \(resetsAt.formatted(date: .abbreviated, time: .shortened))"
+  }
+
+  private var accessibilityLabel: String {
+    guard let usage = model.codexUsage else {
+      return "Dex, \(model.activeCount) working threads"
+    }
+    return "Dex, \(model.activeCount) working threads, \(usage.remainingPercentage) percent of the Codex weekly allowance remaining"
   }
 }
 

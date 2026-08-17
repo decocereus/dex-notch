@@ -10,29 +10,48 @@ final class DexModel: ObservableObject {
 
   @Published private(set) var connectionState: ConnectionState
   @Published private(set) var threads: [DexThread]
+  @Published private(set) var displayedThreads: [DexThread]
+  @Published private(set) var codexUsage: CodexUsageSnapshot?
 
   private var collapseTask: Task<Void, Never>?
 
-  init(connectionState: ConnectionState = .disconnected, threads: [DexThread] = []) {
+  init(
+    connectionState: ConnectionState = .disconnected,
+    threads: [DexThread] = [],
+    codexUsage: CodexUsageSnapshot? = nil
+  ) {
     self.connectionState = connectionState
     self.threads = threads
+    self.displayedThreads = threads
+    self.codexUsage = codexUsage
   }
 
   var activeCount: Int {
-    threads.lazy.filter(\.activity.isActive).count
+    threads.count
   }
 
   var attentionCount: Int {
     threads.lazy.filter { $0.activity == .needsApproval || $0.activity == .needsInput }.count
   }
 
-  var primaryUsagePercentage: Int? {
-    threads.first(where: { $0.activity == .working })?.usagePercentage
-      ?? threads.first?.usagePercentage
+  var peakActiveUsagePercentage: Int? {
+    threads.lazy
+      .filter(\.activity.isActive)
+      .compactMap(\.usagePercentage)
+      .max()
+  }
+
+  var expandedPanelHeight: CGFloat {
+    guard connectionState == .connected else { return NotchGeometry.expandedHeight }
+    let rowCount = min(displayedThreads.count, 4)
+    let threadContentHeight = rowCount == 0 ? 70 : CGFloat(rowCount) * 36
+    return compactHeight + 34 + threadContentHeight + 8
   }
 
   func expand() {
     collapseTask?.cancel()
+    guard !isExpanded else { return }
+    displayedThreads = threads
     isExpanded = true
   }
 
@@ -40,7 +59,7 @@ final class DexModel: ObservableObject {
     collapseTask?.cancel()
 
     if isHovering {
-      isExpanded = true
+      expand()
       return
     }
 
@@ -62,9 +81,26 @@ final class DexModel: ObservableObject {
     compactHeight = geometry.compactFrame.height
   }
 
+  func updateCodexUsage(_ snapshot: CodexUsageSnapshot) {
+    codexUsage = snapshot
+  }
+
   func updateConnection(_ state: ConnectionState, threads: [DexThread]) {
     connectionState = state
     self.threads = threads
+
+    guard state == .connected else {
+      displayedThreads = []
+      return
+    }
+
+    guard isExpanded, !displayedThreads.isEmpty else {
+      displayedThreads = threads
+      return
+    }
+
+    let latestByID = Dictionary(uniqueKeysWithValues: threads.map { ($0.id, $0) })
+    displayedThreads = displayedThreads.compactMap { latestByID[$0.id] }
   }
 }
 

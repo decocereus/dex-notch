@@ -42,6 +42,15 @@ struct NotchGeometry: Equatable, Sendable {
     )
   }
 
+  func expandedFrame(height: CGFloat) -> CGRect {
+    CGRect(
+      x: expandedFrame.minX,
+      y: expandedFrame.maxY - height,
+      width: expandedFrame.width,
+      height: height
+    )
+  }
+
   private static func cameraHousingWidth(
     leftArea: CGRect?,
     rightArea: CGRect?

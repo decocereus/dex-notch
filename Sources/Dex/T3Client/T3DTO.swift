@@ -37,6 +37,15 @@ struct T3ShellSnapshot: Decodable, Sendable {
   struct Project: Decodable, Sendable {
     let id: String
     let title: String
+    let workspaceRoot: String?
+    let repositoryIdentity: RepositoryIdentity?
+  }
+
+  struct RepositoryIdentity: Decodable, Sendable {
+    let canonicalKey: String?
+    let displayName: String?
+    let owner: String?
+    let name: String?
   }
 
   struct Thread: Decodable, Sendable {
@@ -51,6 +60,11 @@ struct T3ShellSnapshot: Decodable, Sendable {
     let hasActionableProposedPlan: Bool?
     let backgroundLiveness: String?
     let planProgress: PlanProgress?
+    let branch: String?
+    let worktreePath: String?
+    let archivedAt: String?
+    let settledOverride: String?
+    let settledAt: String?
   }
 
   struct LatestTurn: Decodable, Sendable {

@@ -18,18 +18,17 @@ struct DexRootView: View {
           onOpenT3ForPairing: onOpenT3ForPairing,
           onConnect: onConnect
         )
-          .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
-      } else {
-        CompactNotchView(model: model)
           .transition(.opacity)
       }
+
+      CompactNotchView(model: model)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .contentShape(surfaceShape)
     .animation(
       reduceMotion
-        ? .easeOut(duration: 0.12)
-        : .spring(duration: 0.28, bounce: 0),
+        ? .easeOut(duration: 0.08)
+        : .easeOut(duration: 0.14),
       value: model.isExpanded
     )
 
@@ -42,7 +41,7 @@ struct DexRootView: View {
           )
           .glassEffect(
             model.isExpanded
-              ? .regular.tint(.black.opacity(0.72)).interactive()
+              ? .regular.tint(.black.opacity(0.72))
               : .identity,
             in: surfaceShape
           )

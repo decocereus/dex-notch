@@ -71,14 +71,25 @@ final class NotchPanelController: NSObject {
   }
 
   private func observeModel() {
-    expansionCancellable = model.$isExpanded
+    expansionCancellable = Publishers.CombineLatest3(
+      model.$isExpanded,
+      model.$displayedThreads,
+      model.$connectionState
+    )
+      .map { isExpanded, threads, state in
+        PanelPresentation(
+          isExpanded: isExpanded,
+          threadCount: threads.count,
+          connectionState: state
+        )
+      }
       .removeDuplicates()
       .dropFirst()
-      .sink { [weak self] isExpanded in
+      .sink { [weak self] presentation in
         Task { @MainActor [weak self] in
           guard let self else { return }
-          self.updatePanelFrame(isExpanded: isExpanded, animated: true)
-          if isExpanded {
+          self.updatePanelFrame(isExpanded: presentation.isExpanded, animated: true)
+          if presentation.isExpanded {
             self.panel.orderFrontRegardless()
           }
         }
@@ -140,14 +151,16 @@ final class NotchPanelController: NSObject {
 
   private func updatePanelFrame(isExpanded: Bool, animated: Bool) {
     guard let geometry else { return }
-    let frame = isExpanded ? geometry.expandedFrame : geometry.compactFrame
+    let frame = isExpanded
+      ? geometry.expandedFrame(height: model.expandedPanelHeight)
+      : geometry.compactFrame
     guard animated else {
       panel.setFrame(frame, display: true)
       return
     }
 
     NSAnimationContext.runAnimationGroup { context in
-      context.duration = 0.24
+      context.duration = 0.12
       context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
       panel.animator().setFrame(frame, display: true)
     }
@@ -158,4 +171,10 @@ final class NotchPanelController: NSObject {
       ?? NSScreen.main
       ?? NSScreen.screens.first
   }
+}
+
+private struct PanelPresentation: Equatable {
+  let isExpanded: Bool
+  let threadCount: Int
+  let connectionState: DexModel.ConnectionState
 }

@@ -8,6 +8,7 @@ Build an open-source, native macOS companion for T3 Code that:
 - expands downward into a glanceable thread-activity surface;
 - shows which threads are working, monitoring, waiting for approval/input, completed, or failed;
 - shows accurate per-thread context/token usage;
+- shows the remaining weekly Codex account allowance and reset time;
 - opens the corresponding thread in the installed T3 Code app;
 - detects the installed T3 Code build and sends users to <https://t3.codes> when it is absent;
 - remains useful on a Mac or display without a camera housing through a top-center fallback.
@@ -48,6 +49,7 @@ No later phase may call the product usable until all four gates below pass:
 - Read-only connection to T3 Code.
 - Compact, expanded, disconnected, no-notch, and T3-not-installed states.
 - Thread activity and per-thread context-window usage.
+- Weekly Codex account allowance through the user's existing local Codex login.
 - Manual launch at login toggle.
 - GitHub-source build plus signed and notarized DMG release.
 
@@ -58,8 +60,6 @@ No later phase may call the product usable until all four gates below pass:
 - Multiple remote T3 environments.
 - Mac App Store distribution.
 - Provider billing estimates.
-- Provider quota/rate-limit percentages until T3 exposes them through a typed,
-  durable read contract.
 - A WidgetKit desktop widget. This product is a persistent overlay application,
   not a system widget.
 
@@ -130,20 +130,18 @@ The main presentation states are:
 
 1. `unavailable` — T3 Code is not installed; show a quiet install affordance.
 2. `disconnected` — T3 is installed but its local server is unavailable.
-3. `compactIdle` — connected with no active or attention-needing work.
-4. `compactActive` — activity count and usage are visible in the wings.
-5. `peek` — a short, non-focus-stealing status reveal after a meaningful change.
-6. `expanded` — user-requested thread list and usage detail.
+3. `compactIdle` — connected and visually merged into the camera housing.
+4. `compactActive` — at most one static, low-contrast state mark.
+5. `peek` — compact wings reveal thread aggregate and weekly usage after an
+   intentional hover dwell.
+6. `expanded` — a click-requested thread list and usage detail.
 
-Hovering either visible wing expands the surface. Each wing owns its own local
-tracking area; do not use a process-wide `mouseMoved` monitor or the containing
-window rectangle as hover truth. Pointer exit waits briefly
-before collapsing so the transition can be crossed without flicker; clicking a
-wing remains an explicit fallback. AppKit owns pointer tracking across the
-non-activating panel while SwiftUI owns the presentation state.
-Attention should change color and may trigger a brief peek, but must not steal
-focus. Respect Reduce Motion by replacing spring geometry with a short fade and
-scale transition.
+Hovering either visible wing reveals only the compact peek after a short dwell.
+Each wing owns its own local tracking area; do not use a process-wide
+`mouseMoved` monitor or the containing window rectangle as hover truth. A click
+opens the expanded panel. Attention can change the one static resting mark but
+must not auto-expand, pulse, or steal focus. AppKit owns pointer tracking across
+the non-activating panel while SwiftUI owns the presentation state.
 
 ### 3. Reuse T3’s activity semantics
 
@@ -166,17 +164,25 @@ progress. This is the authoritative low-bandwidth surface for the notch list.
 
 ### 4. Treat usage as two separate products
 
-For v0.1, “usage” means the active thread’s context window: used tokens, maximum
-tokens when known, and the most recent turn token counts. T3 already persists
+Thread context means used tokens, maximum tokens when known, and the most recent
+turn token counts. T3 already persists
 `thread.token-usage.updated` as `context-window.updated` activity in the thread
 projection. Subscribe to details only for the few visible/active threads, not
 every historical thread.
 
-Provider account rate limits currently arrive as
-`account.rate-limits.updated`, but their payload is untyped and is not exposed
-as a durable shell/read projection. Add a small provider-neutral read model to
-T3 before showing account quota. Until that exists, display “Unavailable,” not
-an inferred or stale percentage.
+Weekly Codex account usage is a separate source. T3's orchestration shell does
+not expose it, but the documented Codex app-server method
+`account/rateLimits/read` returns `usedPercent`, `windowDurationMins`, and
+`resetsAt`. A live read from `codex-cli 0.146.0` on 2026-08-14 returned populated
+seven-day windows for the main Codex allowance and a separate model-specific
+allowance.
+
+For v0.1, Dex may launch a short-lived, feature-detected `codex app-server`
+process, perform the initialization handshake, read the main `codex` bucket,
+and cache the last good answer. Inspect both `primary` and `secondary` for the
+seven-day window (`10080` minutes); do not depend on array order or scrape the
+interactive `/status` or `/usage weekly` output. Missing executable, API-key
+auth, sign-out, protocol drift, or a failed read degrades quietly to unavailable.
 
 The desired later contract is conceptually:
 
@@ -191,7 +197,8 @@ ProviderUsageSnapshot
 ```
 
 Its parser stays at each provider adapter boundary; the companion consumes only
-the provider-neutral result.
+the provider-neutral result. This remains the cleaner long-term architecture,
+and T3 already generates typed Codex protocol support for the required method.
 
 ### 5. Pair once, then use least privilege
 
@@ -223,6 +230,12 @@ Installed T3 Code (stable or nightly)
           ├── shell stream available  -> activity UI
           ├── thread detail available -> context usage
           └── field unavailable       -> honest unavailable state
+
+Installed Codex CLI
+  └── short-lived app-server + existing ChatGPT login
+      └── account/rateLimits/read
+          ├── seven-day codex window -> weekly remaining + reset
+          └── unavailable/incompatible -> quiet unavailable state
 ```
 
 Compatibility rules:
@@ -413,6 +426,20 @@ stale or lying state.
 Exit proof: displayed values match the corresponding T3 thread UI across Codex
 and Claude sessions, including unknown maximums and compaction.
 
+### Phase 2.5 — weekly Codex account usage
+
+- [x] Discover a compatible Codex executable without assuming the GUI process
+  inherited the user's shell `PATH`.
+- [x] Initialize a short-lived Codex app-server and call
+  `account/rateLimits/read` without reading auth files directly.
+- [x] Select the main seven-day Codex window across primary/secondary fields and
+  keep model-specific buckets separate.
+- [x] Cache the last good answer and prove missing, signed-out, incompatible,
+  malformed, and timeout behavior is quiet.
+
+Exit proof: Dex matches the official Codex usage dashboard for weekly remaining
+and reset time while adding no persistent idle helper cost.
+
 ### Phase 3 — polish and release
 
 - [ ] Accessibility labels, keyboard navigation, Reduce Motion, high contrast.
@@ -426,7 +453,7 @@ Exit proof: a clean machine can install, pair, observe live activity, open a
 thread, relaunch, reconnect, update displays, and uninstall without manual file
 repair.
 
-### Phase 4 — account quota and remote environments
+### Phase 4 — T3 usage projection and remote environments
 
 - [ ] Add the typed, durable provider-usage read projection in T3 Code.
 - [ ] Capability-negotiate it from the companion.
@@ -442,6 +469,7 @@ The product is complete for v0.1 when all of these are demonstrated:
 - correct activity priority for simultaneous threads;
 - reconnect/resume without duplicate or stale activity;
 - context usage matching T3’s durable projection;
+- weekly Codex remaining and reset time matching the official usage dashboard;
 - installed-app version detection and working T3 deep links;
 - safe absent-app fallback to the T3 website;
 - low, measured idle energy impact;
@@ -455,8 +483,8 @@ The product is complete for v0.1 when all of these are demonstrated:
   in the product spike before building the data layer.
 - **Private T3 coupling:** capability-negotiate RPC contracts, test official
   stable and nightly fixtures, and never read the database directly.
-- **Unclear account quota:** keep it visibly unavailable until the server owns a
-  typed durable answer.
+- **Experimental Codex app-server protocol:** feature-detect the read method,
+  tolerate additive fields, cache only successful reads, and degrade quietly.
 - **Animation energy cost:** animate only geometry/opacity, stop all repeating
   animation when settled, and profile rather than assume.
 - **Open-source signing:** keep builds reproducible without signing; inject
@@ -466,13 +494,11 @@ The product is complete for v0.1 when all of these are demonstrated:
 
 These should be answered by the Phase 0 prototype rather than by speculation:
 
-1. Should a new approval/input event briefly expand the panel, or only light the wings?
-2. Should the compact left wing prioritize context usage or active-thread count?
-3. Should the expanded panel show three rows or five before scrolling?
-4. Should the fallback island appear on every display or only the active display?
+1. Should the fallback island appear on every display or only the active display?
 
 ## Next action
 
-Build Phase 0 with fixture data only. The first implementation should prove the
-window, geometry, interaction, and visual feel before any authentication or T3
-transport code is added.
+Separate rest, peek, and inspect interaction state. The resting surface should
+disappear into the physical camera housing, intentional hover should reveal the
+thread aggregate plus weekly remaining, and only a click should open the thread
+list.
