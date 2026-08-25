@@ -4,6 +4,7 @@ import SwiftUI
 struct ExpandedThreadsView: View {
   @ObservedObject var model: DexModel
   let onQuit: () -> Void
+  let onCheckForUpdates: () -> Void
   let onOpenT3ForPairing: () -> Void
   let onConnect: () -> Void
 
@@ -20,6 +21,7 @@ struct ExpandedThreadsView: View {
       ExpandedHeader(
         usage: model.connectionState == .connected ? model.codexUsage : nil,
         showsUsage: model.connectionState == .connected,
+        onCheckForUpdates: onCheckForUpdates,
         onQuit: onQuit
       )
 
@@ -144,6 +146,7 @@ struct ExpandedThreadsView: View {
 private struct ExpandedHeader: View {
   let usage: CodexUsageSnapshot?
   let showsUsage: Bool
+  let onCheckForUpdates: () -> Void
   let onQuit: () -> Void
 
   var body: some View {
@@ -159,6 +162,17 @@ private struct ExpandedHeader: View {
       } else {
         Spacer(minLength: 0)
       }
+
+      Button(action: onCheckForUpdates) {
+        Image(systemName: "arrow.triangle.2.circlepath")
+          .font(.system(size: 10, weight: .bold))
+          .frame(width: 40, height: 40)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .foregroundStyle(.white.opacity(0.5))
+      .accessibilityLabel("Check for Updates")
+      .help("Check for Updates…")
 
       Button(action: onQuit) {
         Image(systemName: "xmark")

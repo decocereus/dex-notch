@@ -3,6 +3,7 @@ import SwiftUI
 struct DexRootView: View {
   @ObservedObject var model: DexModel
   let onQuit: () -> Void
+  let onCheckForUpdates: () -> Void
   let onOpenT3ForPairing: () -> Void
   let onConnect: () -> Void
 
@@ -15,6 +16,7 @@ struct DexRootView: View {
         ExpandedThreadsView(
           model: model,
           onQuit: onQuit,
+          onCheckForUpdates: onCheckForUpdates,
           onOpenT3ForPairing: onOpenT3ForPairing,
           onConnect: onConnect
         )

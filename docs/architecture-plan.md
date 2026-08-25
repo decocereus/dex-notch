@@ -449,6 +449,13 @@ and reset time while adding no persistent idle helper cost.
 - [ ] Code signing, notarization, DMG, privacy statement, contribution guide, and license.
 - [ ] Record compact/expanded behavior for the release README.
 
+The CI and protected release workflows, universal DMG packager, Developer ID
+signing order, Apple notarization/stapling step, quarantined-install verifier,
+and signed Sparkle feed were implemented locally on 2026-08-25. These two gates
+remain unchecked until the workflows run on GitHub with protected credentials
+and the first notarized artifact passes on a clean Mac. Privacy, contribution,
+license, and release-recording work also remains open.
+
 Exit proof: a clean machine can install, pair, observe live activity, open a
 thread, relaunch, reconnect, update displays, and uninstall without manual file
 repair.
@@ -498,7 +505,7 @@ These should be answered by the Phase 0 prototype rather than by speculation:
 
 ## Next action
 
-Separate rest, peek, and inspect interaction state. The resting surface should
-disappear into the physical camera housing, intentional hover should reveal the
-thread aggregate plus weekly remaining, and only a click should open the thread
-list.
+Configure the protected GitHub `release` environment secrets, run CI on `main`,
+and publish a pre-release tag to prove Developer ID signing, Apple notarization,
+stapling, the quarantined clean-install launch, and an update from an older
+notarized build.

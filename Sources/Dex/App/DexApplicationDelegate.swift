@@ -1,7 +1,13 @@
 import AppKit
+import Sparkle
 
 @MainActor
 final class DexApplicationDelegate: NSObject, NSApplicationDelegate {
+  private let updaterController = SPUStandardUpdaterController(
+    startingUpdater: true,
+    updaterDelegate: nil,
+    userDriverDelegate: nil
+  )
   private var panelController: NotchPanelController?
   private var connectionController: T3ConnectionController?
   private var codexUsageController: CodexUsageController?
@@ -15,6 +21,9 @@ final class DexApplicationDelegate: NSObject, NSApplicationDelegate {
     let connectionController = T3ConnectionController(model: model)
     let codexUsageController = CodexUsageController(model: model)
     panelController.onConnectRequested = { connectionController.connectFromPasteboard() }
+    panelController.onCheckForUpdatesRequested = { [updaterController] in
+      updaterController.checkForUpdates(nil)
+    }
 
     self.panelController = panelController
     self.connectionController = connectionController

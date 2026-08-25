@@ -1,0 +1,149 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    environment: release
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BUILD_NUMBER="$(git rev-list --count HEAD)"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag"
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor HEAD origin/main
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Require protected release secrets
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NOTARY_API_KEY_P8: ${{ secrets.NOTARY_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          : "${MACOS_CERTIFICATE_P12:?missing MACOS_CERTIFICATE_P12}"
+          : "${MACOS_CERTIFICATE_PASSWORD:?missing MACOS_CERTIFICATE_PASSWORD}"
+          : "${NOTARY_API_KEY_P8:?missing NOTARY_API_KEY_P8}"
+          : "${NOTARY_KEY_ID:?missing NOTARY_KEY_ID}"
+          : "${NOTARY_ISSUER_ID:?missing NOTARY_ISSUER_ID}"
+          : "${SPARKLE_PRIVATE_KEY:?missing SPARKLE_PRIVATE_KEY}"
+
+      - name: Import Developer ID certificate
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/dex-release.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          printf '%s' "$MACOS_CERTIFICATE_P12" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          DEX_CODESIGN_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | awk '/Developer ID Application/ { print $2; exit }')"
+          test -n "$DEX_CODESIGN_IDENTITY"
+          echo "DEX_CODESIGN_IDENTITY=$DEX_CODESIGN_IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Test
+        run: swift test
+
+      - name: Build and sign universal DMG
+        run: ./script/package_release.sh "${{ steps.version.outputs.version }}" "${{ steps.version.outputs.build_number }}"
+
+      - name: Notarize and staple DMG
+        env:
+          NOTARY_API_KEY_P8: ${{ secrets.NOTARY_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          DMG="dist/release/Dex-${{ steps.version.outputs.version }}.dmg"
+          API_KEY_PATH="$RUNNER_TEMP/AuthKey_${NOTARY_KEY_ID}.p8"
+          printf '%s' "$NOTARY_API_KEY_P8" | base64 --decode > "$API_KEY_PATH"
+          xcrun notarytool submit "$DMG" \
+            --key "$API_KEY_PATH" \
+            --key-id "$NOTARY_KEY_ID" \
+            --issuer "$NOTARY_ISSUER_ID" \
+            --wait \
+            --timeout 30m
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          (
+            cd dist/release
+            shasum -a 256 "Dex-${{ steps.version.outputs.version }}.dmg" \
+              > "Dex-${{ steps.version.outputs.version }}.sha256"
+          )
+
+      - name: Generate signed Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          APPCAST_TOOL=".build/release-arm64/artifacts/sparkle/Sparkle/bin/generate_appcast"
+          SIGN_UPDATE_TOOL=".build/release-arm64/artifacts/sparkle/Sparkle/bin/sign_update"
+          git log -1 --pretty=%B > "dist/release/Dex-$VERSION.md"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | "$APPCAST_TOOL" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/decocereus/dex-notch/releases/download/v$VERSION/" \
+            --link "https://github.com/decocereus/dex-notch" \
+            --embed-release-notes \
+            --maximum-versions 1 \
+            --maximum-deltas 0 \
+            -o "dist/release/appcast.xml" \
+            "dist/release"
+          grep -q "sparkle:edSignature" dist/release/appcast.xml
+          grep -q "sparkle-signatures" dist/release/appcast.xml
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_UPDATE_TOOL" \
+            --ed-key-file - --verify dist/release/appcast.xml
+
+      - name: Verify quarantined installation
+        run: ./script/verify_distribution.sh "dist/release/Dex-${{ steps.version.outputs.version }}.dmg"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/release/Dex-$VERSION.dmg" \
+            "dist/release/Dex-$VERSION.sha256" \
+            "dist/release/appcast.xml" \
+            --verify-tag \
+            --generate-notes \
+            --title "Dex $VERSION"
+
+      - name: Remove temporary signing material
+        if: always()
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/dex-release.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/AuthKey_${NOTARY_KEY_ID}.p8"

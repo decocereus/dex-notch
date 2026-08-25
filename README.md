@@ -4,9 +4,9 @@ Dex is a native macOS companion surface for T3 Code. It sits around the
 built-in camera housing, shows agent activity and context usage at a glance,
 and expands into a Liquid Glass thread overview.
 
-Dex is under active development. The rejected Phase 0 fixture prototype has
-been removed from the production launch path; the app currently reports an
-honest disconnected state until read-only T3 pairing is implemented.
+Dex is under active development. It connects to T3 Code through explicit,
+read-only pairing and reads the signed-in Codex account's weekly allowance
+through the local Codex app server.
 
 ## Requirements
 
@@ -34,13 +34,27 @@ Useful modes:
 `--expanded` launches directly into the disconnected expanded state for visual checks.
 Run tests directly with `swift test`.
 
+## Install and update
+
+Public builds are distributed as signed and notarized universal DMGs on
+[GitHub Releases](https://github.com/decocereus/dex-notch/releases). Drag
+`Dex.app` to the Applications shortcut in the DMG, then open Dex from Spotlight
+or Launchpad.
+
+Dex uses Sparkle's signed update feed. Expand the notch and choose the circular
+arrow button to check for an update; Sparkle also offers automatic update
+checks after the first launch.
+
+Release maintainers should follow [`docs/releasing.md`](docs/releasing.md).
+
 ## Current scope
 
 - one non-activating AppKit panel across Spaces and full-screen apps;
 - live notch geometry from `NSScreen`;
 - compact, expanded, disconnected, and no-notch fallback layouts;
-- Liquid Glass expansion on macOS 26.
+- Liquid Glass expansion on macOS 26;
+- read-only T3 activity and context usage;
+- weekly Codex allowance and signed Sparkle updates.
 
-The read-only T3 Code connection and final morphing visual treatment are the next phase. See
-[`docs/architecture-plan.md`](docs/architecture-plan.md) for the integration
-and release plan.
+See [`docs/architecture-plan.md`](docs/architecture-plan.md) for the remaining
+compatibility, accessibility, and public-release proof gates.

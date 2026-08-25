@@ -10,6 +10,7 @@ DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
+APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
@@ -18,8 +19,9 @@ swift build --package-path "$ROOT_DIR" --product "$APP_NAME"
 BUILD_DIR="$(swift build --package-path "$ROOT_DIR" --show-bin-path)"
 
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS"
+mkdir -p "$APP_MACOS" "$APP_FRAMEWORKS"
 cp "$BUILD_DIR/$APP_NAME" "$APP_BINARY"
+ditto "$BUILD_DIR/Sparkle.framework" "$APP_FRAMEWORKS/Sparkle.framework"
 cp "$ROOT_DIR/Support/Info.plist" "$APP_CONTENTS/Info.plist"
 chmod +x "$APP_BINARY"
 

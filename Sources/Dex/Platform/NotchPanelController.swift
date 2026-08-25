@@ -55,6 +55,7 @@ final class NotchPanelController: NSObject {
     let rootView = DexRootView(
       model: model,
       onQuit: { NSApp.terminate(nil) },
+      onCheckForUpdates: { [weak self] in self?.checkForUpdates() },
       onOpenT3ForPairing: { T3ApplicationLauncher.openForPairing() },
       onConnect: { [weak self] in self?.connectFromPasteboard() }
     )
@@ -65,9 +66,14 @@ final class NotchPanelController: NSObject {
   }
 
   var onConnectRequested: (() -> Void)?
+  var onCheckForUpdatesRequested: (() -> Void)?
 
   private func connectFromPasteboard() {
     onConnectRequested?()
+  }
+
+  private func checkForUpdates() {
+    onCheckForUpdatesRequested?()
   }
 
   private func observeModel() {

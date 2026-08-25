@@ -28,5 +28,13 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>SUFeedURL</key>
+    <string>https://github.com/decocereus/dex-notch/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>6hPlIC/oBudYuEQ9tLs1tsm2KE6MpQtFpPJfPyFRhVY=</string>
+    <key>SURequireSignedFeed</key>
+    <true/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
 </dict>
 </plist>
