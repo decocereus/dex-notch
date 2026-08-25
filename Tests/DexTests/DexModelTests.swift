@@ -49,7 +49,7 @@ struct DexModelTests {
       threads: [thread(id: "first"), thread(id: "second")]
     )
 
-    let expected = model.compactHeight + 34 + (2 * 36) + 8
+    let expected = model.compactHeight + DexModel.expandedHeaderHeight + (2 * 36) + 8
     #expect(abs(model.expandedPanelHeight - expected) < 0.001)
   }
 

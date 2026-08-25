@@ -17,9 +17,13 @@ struct ExpandedThreadsView: View {
 
   private var content: some View {
     VStack(spacing: 0) {
-      if model.connectionState == .connected {
-        WeeklyPaceStrip(usage: model.codexUsage)
+      ExpandedHeader(
+        usage: model.connectionState == .connected ? model.codexUsage : nil,
+        showsUsage: model.connectionState == .connected,
+        onQuit: onQuit
+      )
 
+      if model.connectionState == .connected {
         if model.displayedThreads.isEmpty {
           emptyWorkState
         } else {
@@ -137,23 +141,41 @@ struct ExpandedThreadsView: View {
   }
 }
 
-private struct WeeklyPaceStrip: View {
+private struct ExpandedHeader: View {
   let usage: CodexUsageSnapshot?
+  let showsUsage: Bool
+  let onQuit: () -> Void
 
   var body: some View {
     HStack(spacing: 8) {
-      Text(paceLabel)
-        .foregroundStyle(paceColor)
+      if showsUsage {
+        Text(paceLabel)
+          .foregroundStyle(paceColor)
 
-      Spacer(minLength: 8)
+        Spacer(minLength: 8)
 
-      Text(forecastLabel)
-        .foregroundStyle(.white.opacity(0.38))
+        Text(forecastLabel)
+          .foregroundStyle(.white.opacity(0.38))
+      } else {
+        Spacer(minLength: 0)
+      }
+
+      Button(action: onQuit) {
+        Image(systemName: "xmark")
+          .font(.system(size: 10, weight: .bold))
+          .frame(width: 40, height: 40)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .foregroundStyle(.white.opacity(0.5))
+      .accessibilityLabel("Quit Dex")
+      .help("Quit Dex")
     }
     .font(.system(size: 9, weight: .medium, design: .rounded))
     .monospacedDigit()
-    .padding(.horizontal, 13)
-    .frame(height: 34)
+    .padding(.leading, 13)
+    .padding(.trailing, 2)
+    .frame(height: DexModel.expandedHeaderHeight)
     .overlay(alignment: .bottom) {
       Rectangle()
         .fill(.white.opacity(0.06))

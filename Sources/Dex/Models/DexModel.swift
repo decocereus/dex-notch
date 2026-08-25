@@ -3,6 +3,8 @@ import Foundation
 
 @MainActor
 final class DexModel: ObservableObject {
+  static let expandedHeaderHeight: CGFloat = 40
+
   @Published var isExpanded = false
   @Published private(set) var notchWidth: CGFloat = 180
   @Published private(set) var compactWidth: CGFloat = 336
@@ -45,7 +47,7 @@ final class DexModel: ObservableObject {
     guard connectionState == .connected else { return NotchGeometry.expandedHeight }
     let rowCount = min(displayedThreads.count, 4)
     let threadContentHeight = rowCount == 0 ? 70 : CGFloat(rowCount) * 36
-    return compactHeight + 34 + threadContentHeight + 8
+    return compactHeight + Self.expandedHeaderHeight + threadContentHeight + 8
   }
 
   func expand() {
